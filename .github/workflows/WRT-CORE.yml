@@ -175,6 +175,10 @@ jobs:
           rm -rf ./feeds/packages/net/hysteria
           rm -rf ./feeds/packages/net/naiveproxy
 
+          # xray-core 26.9.9 要求 Go >= 1.27，源码树自带的是 1.26，必须换掉
+          rm -rf ./feeds/packages/lang/golang
+          git clone --depth 1 -b 27.x https://github.com/sbwml/packages_lang_golang.git ./feeds/packages/lang/golang
+
           # 关键：删完必须重建索引，否则被删的包仍在索引里，会留下断链
           ./scripts/feeds update -i
 
