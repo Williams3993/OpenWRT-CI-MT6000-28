@@ -440,7 +440,7 @@ define Package/$OB_PKG
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
   TITLE:=Open-Box (sing-box + panel) prebuilt
-  DEPENDS:=+luci-base +rpcd +kmod-tun +nftables +ip-full +ca-bundle +curl
+  DEPENDS:=+libc +luci-base +rpcd +kmod-tun +nftables +ip-full +ca-bundle +curl
 endef
 
 define Build/Prepare
