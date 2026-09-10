@@ -253,6 +253,7 @@ wm_say "源码包已生成：package/$PKG_NAME （版本 $WM_VER）"
 echo "=================================================="
 echo ""
 
+
 echo ""
 echo "=================================================="
 echo " OpenClash 内核 + Geo 数据（编译时内置）"
@@ -349,8 +350,10 @@ echo " Open-Box（sing-box 面板，编译进 rootfs）"
 echo "=================================================="
 
 OB_PKG="open-box"
+
 # 架构：MT6000 / MT3600BE / H5000M 用 arm64，X86 软路由改成 x64
 OB_ARCH="arm64"
+
 OB_BASE="https://github.com/liandu2024/Open-Box/releases/latest/download"
 OB_TAR="open-box-linux-${OB_ARCH}.tar.gz"
 
@@ -363,77 +366,175 @@ ob_build() {
 	tmp="$(mktemp -d)" || return 1
 
 	ob_say "下载 $OB_TAR"
+
 	curl -fsSL --connect-timeout 20 --max-time 900 --retry 3 --retry-delay 5 \
 		-o "$tmp/$OB_TAR" "$OB_BASE/$OB_TAR" && [ -s "$tmp/$OB_TAR" ] \
-		|| { ob_warn "下载失败"; rm -rf "$tmp"; return 1; }
+		|| {
+			ob_warn "下载失败"
+			rm -rf "$tmp"
+			return 1
+		}
 
+	# -------------------------------------------------
+	# 校验 Open-Box 官方发布的 sha256
+	# -------------------------------------------------
 	if curl -fsSL --connect-timeout 20 --max-time 60 --retry 3 \
 		-o "$tmp/$OB_TAR.sha256" "$OB_BASE/$OB_TAR.sha256"; then
-		( cd "$tmp" && sha256sum -c "$OB_TAR.sha256" >/dev/null 2>&1 ) \
-			|| { ob_warn "sha256 校验不通过，放弃"; rm -rf "$tmp"; return 1; }
+
+		(
+			cd "$tmp" &&
+			sha256sum -c "$OB_TAR.sha256" >/dev/null 2>&1
+		) || {
+			ob_warn "sha256 校验不通过，放弃"
+			rm -rf "$tmp"
+			return 1
+		}
+
 		ob_say "sha256 校验通过"
 	else
 		ob_warn "取不到 sha256 文件，本次跳过校验"
 	fi
 
 	root="./$OB_PKG/files"
+
 	rm -rf "./$OB_PKG"
-	mkdir -p "$root/opt/open-box" "$root/etc/init.d" "$root/etc/uci-defaults" \
-		"$root/usr/share/luci/menu.d" "$root/usr/share/rpcd/acl.d" \
+
+	mkdir -p \
+		"$root/opt/open-box" \
+		"$root/etc/init.d" \
+		"$root/etc/uci-defaults" \
+		"$root/usr/share/luci/menu.d" \
+		"$root/usr/share/rpcd/acl.d" \
 		"$root/www/luci-static/resources/view/openbox"
 
+	# -------------------------------------------------
+	# 解包 Open-Box
+	# -------------------------------------------------
 	tar -xzf "$tmp/$OB_TAR" -C "$root/opt/open-box" \
-		|| { ob_warn "解包失败"; rm -rf "$tmp" "./$OB_PKG"; return 1; }
+		|| {
+			ob_warn "解包失败"
+			rm -rf "$tmp" "./$OB_PKG"
+			return 1
+		}
+
 	rm -rf "$tmp"
 
-	[ -x "$root/opt/open-box/node/bin/node" ] && [ -x "$root/opt/open-box/bin/sing-box" ] \
-		|| { ob_warn "解出的内容不完整"; rm -rf "./$OB_PKG"; return 1; }
+	# -------------------------------------------------
+	# 基本完整性检查
+	# -------------------------------------------------
+	[ -x "$root/opt/open-box/node/bin/node" ] &&
+	[ -x "$root/opt/open-box/bin/sing-box" ] \
+		|| {
+			ob_warn "解出的内容不完整"
+			rm -rf "./$OB_PKG"
+			return 1
+		}
 
+	# -------------------------------------------------
+	# 获取 Open-Box 版本号
+	# -------------------------------------------------
 	ver="$(sed -n 's/.*"version"[^"]*"v\{0,1\}\([^"]*\)".*/\1/p' \
 		"$root/opt/open-box/meta.json" | head -n1)"
+
 	[ -n "$ver" ] || ver="0.0.0"
 
-	# install.sh 运行时做的铺装动作，这里改在编译期完成
-	cp -f "$root/opt/open-box/openwrt/initd/openbox"       "$root/etc/init.d/openbox"
-	cp -f "$root/opt/open-box/openwrt/initd/openbox-panel" "$root/etc/init.d/openbox-panel"
-	chmod 755 "$root/etc/init.d/openbox" "$root/etc/init.d/openbox-panel"
+	ob_say "检测到版本：$ver"
 
-	cp -f "$root/opt/open-box/openwrt/luci/root/usr/share/luci/menu.d/luci-app-openbox.json" \
+	# -------------------------------------------------
+	# install.sh 原本在路由器运行时完成的铺装动作，
+	# 这里直接在固件编译阶段完成
+	# -------------------------------------------------
+
+	cp -f \
+		"$root/opt/open-box/openwrt/initd/openbox" \
+		"$root/etc/init.d/openbox"
+
+	cp -f \
+		"$root/opt/open-box/openwrt/initd/openbox-panel" \
+		"$root/etc/init.d/openbox-panel"
+
+	chmod 755 \
+		"$root/etc/init.d/openbox" \
+		"$root/etc/init.d/openbox-panel"
+
+	# LuCI 菜单
+	cp -f \
+		"$root/opt/open-box/openwrt/luci/root/usr/share/luci/menu.d/luci-app-openbox.json" \
 		"$root/usr/share/luci/menu.d/"
-	cp -f "$root/opt/open-box/openwrt/luci/root/usr/share/rpcd/acl.d/luci-app-openbox.json" \
+
+	# rpcd ACL
+	cp -f \
+		"$root/opt/open-box/openwrt/luci/root/usr/share/rpcd/acl.d/luci-app-openbox.json" \
 		"$root/usr/share/rpcd/acl.d/"
-	cp -f "$root/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox/status.js" \
+
+	# LuCI 页面
+	cp -f \
+		"$root/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox/status.js" \
 		"$root/www/luci-static/resources/view/openbox/"
 
+	# -------------------------------------------------
+	# 首次启动脚本
+	# -------------------------------------------------
 	cat > "$root/etc/uci-defaults/99-open-box" <<'OBUCI'
 #!/bin/sh
+
 # 首次启动 / 恢复出厂后执行一次
+
+# 清理 LuCI 缓存
 rm -rf /tmp/luci-modulecache/* /tmp/luci-indexcache* 2>/dev/null
-[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1
-# 只拉面板；内核服务留给面板生成 config.json 之后自己 enable，
-# 这里提前 enable 只会在每次开机时因为没有配置而失败一次
+
+# rpcd 重新加载 ACL
+[ -x /etc/init.d/rpcd ] &&
+	/etc/init.d/rpcd restart >/dev/null 2>&1
+
+# 只启动 Open-Box 面板。
+#
+# sing-box 服务不能在这里提前 enable/start，
+# 因为此时用户还没有通过面板生成 config.json。
+# 提前启动只会导致每次开机因为没有配置而失败一次。
 if [ -x /etc/init.d/openbox-panel ]; then
 	/etc/init.d/openbox-panel enable
 	/etc/init.d/openbox-panel start
 fi
+
 exit 0
 OBUCI
+
 	chmod 755 "$root/etc/uci-defaults/99-open-box"
 
+	# =================================================
+	#
+	# 生成 OpenWrt / ImmortalWrt 软件包 Makefile
+	#
+	# =================================================
 	cat > "./$OB_PKG/Makefile" <<OBEOF
+#
+# 本文件由 Scripts/PRIVATE.sh 自动生成
+# Open-Box 版本：$ver
+#
 include \$(TOPDIR)/rules.mk
 
 PKG_NAME:=$OB_PKG
 PKG_VERSION:=$ver
 PKG_RELEASE:=1
+
 PKG_MAINTAINER:=lujunxi
 PKG_LICENSE:=MIT
 
-# 预编译二进制（musl Node / sing-box），禁止 buildroot 再 strip
+# ==================================================
+# Open-Box 使用预编译二进制：
+#
+#   Node.js  = musl
+#   sing-box = musl/static
+#
+# 禁止 OpenWrt buildroot 再次 strip，
+# 避免破坏上游预编译 ELF。
+# ==================================================
 RSTRIP:=:
 STRIP:=:
 
 include \$(INCLUDE_DIR)/package.mk
+
 
 define Package/$OB_PKG
   SECTION:=net
@@ -443,27 +544,71 @@ define Package/$OB_PKG
   DEPENDS:=+libc +luci-base +rpcd +kmod-tun +nftables +ip-full +ca-bundle +curl
 endef
 
+
+# ==================================================
+# ImmortalWrt 25.12 musl SONAME 兼容
+#
+# Open-Box 发布包内捆绑了 Alpine musl 版：
+#
+#   libstdc++.so.6
+#   libgcc_s.so.1
+#
+# Alpine aarch64 ELF 的 DT_NEEDED 会出现：
+#
+#   libc.musl-aarch64.so.1
+#
+# 但 ImmortalWrt/OpenWrt 自身的 musl libc 已经能够
+# 满足这个运行时依赖，只是 package-pack.mk 的静态
+# 依赖扫描无法自动把这个 SONAME 与系统 libc 对应起来。
+#
+# 所以用 OpenWrt 官方支持的 extra_provides 告诉
+# CheckDependencies：这个 SONAME 在当前包中是可满足的。
+#
+# 注意：
+#   这不是跳过整个依赖检查；
+#   只对白名单中的这个 musl libc SONAME 放行。
+# ==================================================
+define Package/$OB_PKG/extra_provides
+	echo libc.musl-aarch64.so.1;
+endef
+
+
+define Package/$OB_PKG/description
+  Open-Box sing-box Web 管理面板。
+  使用官方发布的 musl Node.js 与 sing-box 预编译二进制，
+  在固件编译阶段直接安装进 rootfs。
+endef
+
+
 define Build/Prepare
 	mkdir -p \$(PKG_BUILD_DIR)
 endef
 
+
 define Build/Configure
 endef
 
+
 define Build/Compile
 endef
+
 
 define Package/$OB_PKG/install
 	\$(CP) ./files/. \$(1)/
 endef
 
+
 \$(eval \$(call BuildPackage,$OB_PKG))
 OBEOF
 
 	ob_say "源码包已生成：package/$OB_PKG （版本 $ver，$(du -sh "$root" | cut -f1)）"
+
 	return 0
 }
 
+# Open-Box 下载失败不影响其他包处理；
+# 但如果成功生成 package/open-box，
+# 后续 ImmortalWrt 正常参与 package/world 编译。
 ob_build || ob_warn "Open-Box 未编入本次固件，其余部分照常"
 
 echo "=================================================="
