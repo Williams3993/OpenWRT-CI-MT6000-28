@@ -218,4 +218,4 @@ CONFIG_PACKAGE_wmsxwd-openwrt=y
 CONFIG_PACKAGE_luci-theme-bootstrap=y
 
 #Open-Box（由 Scripts/PRIVATE.sh 每次编译自动拉取最新版）
-CONFIG_PACKAGE_open-box=y
+# CONFIG_PACKAGE_open-box is not set
