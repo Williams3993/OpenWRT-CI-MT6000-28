@@ -609,7 +609,8 @@ OBEOF
 # Open-Box 下载失败不影响其他包处理；
 # 但如果成功生成 package/open-box，
 # 后续 ImmortalWrt 正常参与 package/world 编译。
-ob_build || ob_warn "Open-Box 未编入本次固件，其余部分照常"
+# ob_build || ob_warn "Open-Box 未编入本次固件，其余部分照常"
+echo "[open-box] 已关闭：本次不下载、不打包"
 
 echo "=================================================="
 echo ""
