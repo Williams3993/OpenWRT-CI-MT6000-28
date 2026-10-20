@@ -45,12 +45,14 @@ UPDATE_PACKAGE() {
 # UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
 
 #===============================================
-# 只保留 argon 主题 + argon 配置，其余插件全部走 feeds
+# 只保留 argon 主题（已自带配置页），其余插件全部走 feeds
 # 不要在这里再加 passwall / openclash / mosdns
 # 否则会和 feeds 里的同名包冲突
 #===============================================
 UPDATE_PACKAGE "argon" "jerrykuku/luci-theme-argon" "master"
-UPDATE_PACKAGE "argon-config" "jerrykuku/luci-app-argon-config" "master"
+# Argon 3.0.0 起主题已内置配置页（含 /etc/config/argon 与 argon-config 翻译），
+# 独立的 luci-app-argon-config 会与之文件冲突导致打包失败，故不再拉取
+# UPDATE_PACKAGE "argon-config" "jerrykuku/luci-app-argon-config" "master"
 
 #引入私有扩展脚本
 if [ -f "$GITHUB_WORKSPACE/Scripts/PRIVATE.sh" ]; then
