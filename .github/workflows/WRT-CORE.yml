@@ -666,6 +666,15 @@ jobs:
               -exec rm -rf {} +
 
 
+            # 删除 trusted-firmware-a 顺带产出的通用 ram-boot bl2
+            # （mt7981/mt7986/mt7987/mt7988 共 8 个，与 GL-MT6000 刷机无关，
+            #   GL-MT6000 自己的 bl2 是 *gl-mt6000-preloader.bin，不受影响）
+            find ./bin/targets/ \
+              -type f \
+              -name "*-ram-*-bl2.bin" \
+              -print -delete
+
+
             # ==================================================
             # MT6000 目标文件重命名
             # ==================================================
@@ -880,7 +889,11 @@ jobs:
 
       - name: Release Firmware
 
+        id: release
+
         if: env.WRT_TEST != 'true'
+
+        continue-on-error: true
 
         uses: softprops/action-gh-release@v2.6.2
 
@@ -909,6 +922,85 @@ jobs:
 
             内核版本：${{ env.WRT_KVER }}
             插件列表：${{ env.WRT_LIST }}
+
+
+      # ========================================================
+      # Release 上传重试
+      #
+      # action-gh-release 并发上传附件，偶发
+      # "other side closed" 网络中断会导致整步失败。
+      # 首次失败时改用 gh 逐个顺序补传（--clobber 覆盖），
+      # 每个文件最多重试 5 次。
+      # ========================================================
+
+      - name: Release Firmware Retry
+
+        if: env.WRT_TEST != 'true' && steps.release.outcome == 'failure'
+
+        shell: bash
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        run: |
+
+          set -uo pipefail
+
+
+          TAG="${WRT_CONFIG}-${WRT_INFO}-${WRT_BRANCH}-${WRT_DATE}"
+
+
+          echo "首次上传失败，开始补传：$TAG"
+
+          sleep 30
+
+
+          # Release 未创建时补建（正文从首次步骤参数无法取回，写简要说明）
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes "源码：${WRT_REPO}  分支：${WRT_BRANCH}  配置：${WRT_CONFIG}  内核：${WRT_KVER:-}" \
+              || exit 1
+
+          fi
+
+
+          FAILED=0
+
+          for FILE in ./wrt/upload/*.*; do
+
+            OK=0
+
+            for i in 1 2 3 4 5; do
+
+              if gh release upload "$TAG" "$FILE" \
+                   --repo "$GITHUB_REPOSITORY" \
+                   --clobber; then
+
+                echo "[OK] $(basename "$FILE")"
+                OK=1
+                break
+
+              fi
+
+              echo "[RETRY $i] $(basename "$FILE")"
+              sleep $((i * 10))
+
+            done
+
+            [ "$OK" -eq 1 ] || FAILED=1
+
+          done
+
+
+          if [ "$FAILED" -ne 0 ]; then
+
+            echo "::error::Release 附件补传失败"
+            exit 1
+
+          fi
 
 
       # ========================================================
@@ -971,6 +1063,29 @@ jobs:
             echo
             echo "::error::Release 上传验证失败。"
             echo
+
+            exit 1
+
+          fi
+
+
+          MISSING=0
+
+          for FILE in ./wrt/upload/*.*; do
+
+            NAME=$(basename "$FILE")
+
+            if ! printf '%s\n' "$ASSETS" | grep -qxF "$NAME"; then
+
+              echo "::error::Release 缺少附件：$NAME"
+              MISSING=1
+
+            fi
+
+          done
+
+
+          if [ "$MISSING" -ne 0 ]; then
 
             exit 1
 
