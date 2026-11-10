@@ -12,7 +12,7 @@
 #   1. 保留原有 feeds / OpenClash（已移除 helloworld / SSR+）
 #   2. 本地必须存在 sysupgrade.bin
 #   3. sysupgrade.bin 必须大于 1MB
-#   4. Release 固定使用 v2.6.2
+#   4. Release 固定使用 v3.0.3（Node 24 运行时）
 #   5. 上传失败直接报错
 #   6. Release 创建后再次检查真实附件
 #   7. TEST=true 不创建 Release
@@ -895,7 +895,7 @@ jobs:
 
         continue-on-error: true
 
-        uses: softprops/action-gh-release@v2.6.2
+        uses: softprops/action-gh-release@v3.0.3
 
         with:
 
